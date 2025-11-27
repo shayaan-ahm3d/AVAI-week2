@@ -3,6 +3,7 @@ from models import *
 import torch
 from skimage.metrics import peak_signal_noise_ratio
 from utils.denoising_utils import *
+import matplotlib.pyplot as plt
 
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark =True
@@ -29,6 +30,23 @@ from utils.sr_utils import crop_image
 #high_res_path = Path("dataset/DIV2K_train_HR")
 #dataset = Div2kDataset(low_res_path, high_res_path, Mode.TRAIN)
 
+
+def plot_patches(tensor):
+    fig = plt.figure(figsize=(8, 8))
+    grid = ImageGrid(fig, 111, nrows_ncols=(4, 4), axes_pad=0.1)
+
+    for i, ax in enumerate(grid):
+        patch = tensor[i].permute(1, 2, 0).numpy() 
+        ax.imshow(patch)
+        ax.axis('off')
+
+    plt.show()
+
+plot_patches(p)
+
+from dataloader import Patchify
+patchify = Patchify()
+
 high = Image.open("0001.png")
 low = Image.open("0001x8.png")
 
@@ -37,6 +55,16 @@ high = crop_image(high)
 
 low_np = pil_to_np(low)
 high_np = pil_to_np(high)
+
+low_torch = np_to_torch(low_np).type(dtype)
+high_torch = np_to_torch(high_np).type(dtype)
+
+low_torch.permute(2, 0, 1).unsqueeze(0)
+high_torch.permute(2, 0, 1).unsqueeze(0)
+
+p = patchify(high)
+
+
 
 # # Set up the parameters for training
 # 
@@ -88,13 +116,7 @@ print ('Number of params: %d' % s)
 # Loss
 mse = torch.nn.MSELoss().type(dtype)
 
-low_torch = np_to_torch(low_np).type(dtype)
-high_torch = np_to_torch(high_np).type(dtype)
-
 # **Architecture of the Network of skip**
-
-import torch
-import torch.nn as nn
 from models.common import *
 
 def skip(
