@@ -7,6 +7,7 @@ requires-python = ">=3.14"
 dependencies = [
     "ipykernel>=7.1.0",
     "matplotlib>=3.10.7",
+    "nbconvert>=7.16.6",
     "scikit-image>=0.25.2",
     "torch>=2.9.1",
     "torchvision>=0.24.1",
