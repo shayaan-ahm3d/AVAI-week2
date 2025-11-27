@@ -44,7 +44,7 @@ input_depth = 3
 
 # Patch-specific settings
 PATCH_SIZE = 256
-PATCH_OVERLAP = 64
+PATCH_OVERLAP = 0
 
 mse = torch.nn.MSELoss().to(device=device)
 
@@ -157,13 +157,26 @@ for idx, (top, left, bottom, right) in enumerate(patch_coords):
 
 final_output = reconstruction / np.clip(weight_map, 1e-8, None)
 
-baseline_psnr = peak_signal_noise_ratio(high_np, low_np)
+# Bicubic baseline for fair comparison (upscale LR to HR size)
+from PIL import Image as PILImage
+lr_bicubic = low.resize(high.size, PILImage.Resampling.BICUBIC)
+lr_bicubic_np = pil_to_np(lr_bicubic)
+
+baseline_psnr = peak_signal_noise_ratio(high_np, lr_bicubic_np)
 final_psnr = peak_signal_noise_ratio(high_np, final_output)
-print(f'Baseline PSNR (LR vs HR): {baseline_psnr:.2f} dB')
+print(f'Bicubic baseline PSNR: {baseline_psnr:.2f} dB')
 print(f'Final stitched PSNR: {final_psnr:.2f} dB')
 
+# Save final output
+from utils.common_utils import np_to_pil
+output_img = np_to_pil(np.clip(final_output, 0, 1))
+output_path = Path("data/sr_output.png")
+output_path.parent.mkdir(parents=True, exist_ok=True)
+output_img.save(output_path)
+print(f'Saved output to {output_path}')
+
 plot_image_grid([
-    np.clip(low_np, 0, 1),
+    np.clip(lr_bicubic_np, 0, 1),
     np.clip(final_output, 0, 1),
     np.clip(high_np, 0, 1)
 ], factor=13, nrow=3)
