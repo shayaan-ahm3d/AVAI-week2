@@ -23,7 +23,7 @@ PLOT = False
 
 low_res_path = Path("dataset/DIV2K_valid_LR_x8")
 high_res_path = Path("dataset/DIV2K_valid_HR")
-dataset = Div2kDataset(low_res_path, high_res_path, Mode.TRAIN)
+dataset = Div2kDataset(low_res_path, high_res_path, Mode.VALIDATE)
 
 # Optimization and network hyperparameters
 pad = 'reflection'
@@ -37,20 +37,20 @@ exp_weight = 0.99
 num_iter = 500
 input_depth = 3
 
-# Patch-specific settings
+# Patchify settings
 PATCH_SIZE = 256
-PATCH_OVERLAP = 0
-OUTPUT_DIR = Path("data/sr_outputs")
+PATCH_OVERLAP = 64
+
+OUTPUT_DIR = Path("data/valid_sr")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-lpips_model = lpips.LPIPS(net='alex').to(device)
+lpips_model = lpips.LPIPS().to(device)
 lpips_model.eval()
 
 mse = torch.nn.MSELoss().to(device=device)
 
 
 def build_sr_net():
-    """Create a fresh DIP super-resolution network for a patch."""
     net = get_net(
         input_depth,
         'skip',
@@ -206,7 +206,7 @@ def super_resolve_image(low_img, high_img, log_progress=False):
 all_psnr = []
 all_ssim = []
 all_lpips = []
-metrics_log_path = OUTPUT_DIR / "metrics.log"
+metrics_log_path = OUTPUT_DIR / "val_metrics.log"
 metrics_log_path.write_text(
     "sample,baseline_psnr,dip_psnr,baseline_ssim,dip_ssim,baseline_lpips,dip_lpips,num_patches\n",
     encoding="utf-8",
