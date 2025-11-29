@@ -176,10 +176,6 @@ print(f"High-res size: {high_width}x{high_height}")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# create an ImageData instance
-#input_image = 
-#dataloader = DataLoader(input_image, batch_size=1, pin_memory=True, num_workers=0)
-
 img_siren = Siren(in_features=2, out_features=3, hidden_features=256,
                   hidden_layers=3, outermost_linear=True).to(device)
 
@@ -310,7 +306,7 @@ plt.show()
 
 plt.figure(figsize=(15, 5))
 plt.subplot(1, 3, 1)
-plt.title('Bicubic ↑')
+plt.title('Bicubic Upscaling')
 plt.imshow(bicubic_np)
 plt.axis('off')
 
