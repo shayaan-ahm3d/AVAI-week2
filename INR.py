@@ -10,9 +10,6 @@ from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 import lpips
 import matplotlib.pyplot as plt
 
-
-
-
 # ### Step 1 Initialize SIREN Layers
 # The sine layer is the basic building block of SIREN. SIREN is essentially a MLP (multi-layer perceptron) with sine activation. Note that SIREN is highly dependent on weights initialization to preserve the distribution of activations through the network. The authors propose the following initializations (check section 3.2 in the paper if you are interested):
 # 
@@ -193,8 +190,8 @@ low_target = low_tensor.unsqueeze(0)  # (1, 3, H_lr, W_lr)
 high_coords = get_mgrid(high_height, high_width).to(device).float()
 high_coords_grid = high_coords.view(high_height, high_width, 2)
 
-PATCH_SIZE = 256
-PATCH_OVERLAP = 0
+PATCH_SIZE = 128
+PATCH_OVERLAP = 32
 
 patch_slices = list(generate_patch_coords(high_height, high_width, PATCH_SIZE, PATCH_OVERLAP))
 patch_coord_batches = []
