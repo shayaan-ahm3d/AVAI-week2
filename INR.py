@@ -1,16 +1,16 @@
-from dataset import Div2kDataset, Mode
+from dip_super_resolution import generate_patch_coords
 
 import numpy as np
+from PIL import Image
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
-from PIL import Image, ImageFilter
-from torchvision import transforms
-from torchvision.transforms import Resize, Compose, ToTensor, Normalize
+from torchvision.transforms import Compose, ToTensor, Normalize
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 import lpips
 import matplotlib.pyplot as plt
+
+
 
 
 # ### Step 1 Initialize SIREN Layers
@@ -190,9 +190,24 @@ low_tensor = torch.from_numpy(low_np).permute(2, 0, 1).contiguous().to(device)
 high_tensor = torch.from_numpy(high_np).permute(2, 0, 1).contiguous().to(device)
 
 low_target = low_tensor.unsqueeze(0)  # (1, 3, H_lr, W_lr)
-high_target_flat = high_tensor.view(3, -1).permute(1, 0)  # (H_hr*W_hr, 3)
-
 high_coords = get_mgrid(high_height, high_width).to(device).float()
+high_coords_grid = high_coords.view(high_height, high_width, 2)
+
+PATCH_SIZE = 256
+PATCH_OVERLAP = 0
+
+patch_slices = list(generate_patch_coords(high_height, high_width, PATCH_SIZE, PATCH_OVERLAP))
+patch_coord_batches = []
+patch_target_batches = []
+for top, left, bottom, right in patch_slices:
+    coords_patch = high_coords_grid[top:bottom, left:right].reshape(-1, 2)
+    target_patch = high_tensor[:, top:bottom, left:right].permute(1, 2, 0).reshape(-1, 3)
+    patch_coord_batches.append(coords_patch)
+    patch_target_batches.append(target_patch)
+
+num_patches = len(patch_coord_batches)
+if not num_patches:
+    raise RuntimeError("No patches generated; check PATCH_SIZE settings.")
 
 # define differential operators that allow us to leverage autograd to compute gradients, the laplacian, etc.
 def laplace(y, x):
@@ -230,20 +245,25 @@ channels = 3
 
 optim = torch.optim.Adam(lr=1e-4, params=img_siren.parameters())
 
-print(low_target.shape, high_target_flat.shape)
+print(f"Low target shape: {low_target.shape}, patches: {num_patches}")
 
-## Training Loop
+# Training Loop over patches
 for step in range(total_steps):
-    model_output, autograd_coords = img_siren(high_coords)
+    patch_idx = step % num_patches
+    coords_batch = patch_coord_batches[patch_idx]
+    target_batch = patch_target_batches[patch_idx]
 
-    high_pred = model_output.view(high_height, high_width, channels).permute(2, 0, 1).unsqueeze(0)
-    loss = F.mse_loss(model_output, high_target_flat)
+    model_output, autograd_coords = img_siren(coords_batch)
+    loss = F.mse_loss(model_output, target_batch)
 
     if not step % steps_til_summary:
-        print("Step %d, Total loss %0.6f" % (step, loss))
+        print(f"Step {step}, Patch {patch_idx}/{num_patches}, Loss {loss.item():.6f}")
 
-        lap = laplace(model_output, autograd_coords)
-        grad = gradient(model_output, autograd_coords)
+        full_output, full_coords = img_siren(high_coords)
+        high_pred = full_output.view(high_height, high_width, channels).permute(2, 0, 1).unsqueeze(0)
+
+        lap = laplace(full_output, full_coords)
+        grad = gradient(full_output, full_coords)
 
         output_img = high_pred.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
         grad_magnitude_img = grad.norm(dim=-1).detach().cpu().view(high_height, high_width).numpy()
