@@ -16,7 +16,7 @@ from PIL.Image import Image
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def train_model(model: Module, low_res_image, steps: int) -> None:
+def train_model(model: Module, low_res_image: torch.Tensor, steps: int) -> None:
     input_coords, ground_truth_pixel_values = Div2kDataset.get_coordinate_to_pixel_value_mapping(low_res_image)
     input_coords = input_coords.to(DEVICE)
     ground_truth_pixel_values = ground_truth_pixel_values.to(DEVICE)
@@ -24,8 +24,8 @@ def train_model(model: Module, low_res_image, steps: int) -> None:
     for step in range(steps):
         model_output_pixel_values, _ = model(input_coords)
 
-        out = model_output_pixel_values.reshape([1, low_res_image.height, low_res_image.width, 3]).permute([0, 3, 1, 2])
-        gt = ground_truth_pixel_values.reshape([1, low_res_image.height, low_res_image.width, 3]).permute([0, 3, 1, 2])
+        out = model_output_pixel_values.reshape([1, low_res_image.shape[1], low_res_image.shape[0], 3]).permute([0, 3, 1, 2])
+        gt = ground_truth_pixel_values.reshape([1, low_res_image.shape[1], low_res_image.shape[0], 3]).permute([0, 3, 1, 2])
 
         loss = mse(out, gt)
         
@@ -36,7 +36,7 @@ def train_model(model: Module, low_res_image, steps: int) -> None:
         loss.backward()
         optimiser.step()
 
-def evaluate_model(model: Module, high_res_image, index: int):
+def evaluate_model(model: Module, high_res_image: torch.Tensor, index: int):
     input_coords, ground_truth_pixel_values = Div2kDataset.get_coordinate_to_pixel_value_mapping(high_res_image)
     input_coords.to(DEVICE)
     ground_truth_pixel_values.to(DEVICE)
@@ -46,9 +46,9 @@ def evaluate_model(model: Module, high_res_image, index: int):
         loss = mse(model_output_pixel_values, ground_truth_pixel_values)
 
         _, axes = plt.subplots(nrows=1, ncols=2, figsize=(16, 8))
-        axes[0].imshow(convert_pixel_value_range(ground_truth_pixel_values).cpu().view(high_res_image.height, high_res_image.width, 3).detach().numpy())
+        axes[0].imshow(convert_pixel_value_range(ground_truth_pixel_values).cpu().view(high_res_image.shape[1], high_res_image.shape[0], 3).detach().numpy())
         axes[0].set_title("Ground Truth", fontsize=20)
-        axes[1].imshow(convert_pixel_value_range(model_output_pixel_values).cpu().view(high_res_image.height, high_res_image.width, 3).detach().numpy())
+        axes[1].imshow(convert_pixel_value_range(model_output_pixel_values).cpu().view(high_res_image.shape[1], high_res_image.shape[0], 3).detach().numpy())
         axes[1].set_title("Model Output", fontsize=20)
         
         plt.savefig(f"outputs/INR/{index}-SISR")
