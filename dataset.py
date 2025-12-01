@@ -55,43 +55,24 @@ class Div2kDataset(Dataset):
         ])
     
 
-class ImagePreparation_color(Dataset):
-    '''a class which takes as input a RGB image and preprocess it into a list of coords and pixels of the same image resized into height*width.'''
-    def __init__(self, name, size):
+class Div2kInr(Dataset):
+    def __init__(self, path: Path) -> None:
             super().__init__()
-            img = Image.open(name)
-            if img.mode=='L':
-                img= img.convert('RGB')
-
-            if isinstance(size, int):
-                    target_height = size
-                    target_width = size
-            else:
-                    target_height, target_width = size
-
-            red, green, blue = img.split()
+            self.image = Image.open(path)
             transform = Compose([
-            Resize((target_height, target_width)),
-            ToTensor(),
-            Normalize(torch.Tensor([0.5]), torch.Tensor([0.5]))
+                Resize((self.image.width, self.image.height)),
+                ToTensor(),
+                Normalize(mean=torch.Tensor([0.5, 0.5, 0.5]), std=torch.Tensor([0.5, 0.5, 0.5]))
             ])
-            red = transform(red)
-            green = transform(green)
-            blue = transform(blue)
-            self.redpixels = red.permute(1, 2, 0).view(-1, 1)
-            self.greenpixels = green.permute(1, 2, 0).view(-1, 1)
-            self.bluepixels = blue.permute(1, 2, 0).view(-1, 1)
-            self.coords = get_mgrid(target_height, target_width)
-            self.height = target_height
-            self.width = target_width
 
-            self.pixels= torch.cat((self.redpixels,self.greenpixels,self.bluepixels),1)
-        
-    def __len__(self):
+            self.coords: Tensor = get_mgrid(self.image.width, self.image.height)
+            self.pixels: Tensor = transform(self.image).permute(1, 2, 0).view(-1, 1)
+
+    def __len__(self) -> int:
       return 1
 
-    def __getitem__(self, idx):    
-      if idx > 0: raise IndexError
+    def __getitem__(self, idx) -> tuple[Tensor, Tensor]:
+      if idx > 0: raise IndexError("Single image super resolution method, therefore only 1 image!")
       return self.coords, self.pixels
   
 # ### Step 2 Data Preparation
