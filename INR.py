@@ -60,8 +60,10 @@ with torch.no_grad():
 
     fig, axes = plt.subplots(1,2, figsize=(32,8))
     axes[0].imshow(map_to_01(ground_truth_pixel_values).cpu().view(high_size[0], high_size[1], 3).detach().numpy())
+    axes[0].set_title('Ground Truth', fontsize=20)
     axes[1].imshow(map_to_01(model_output_pixel_values).cpu().view(high_size[0], high_size[1], 3).detach().numpy())
-
+    axes[1].set_title('Model Output', fontsize=20)
+    
     plt.savefig("comparison")
 
     print("Total loss: %0.6f" % (loss))
