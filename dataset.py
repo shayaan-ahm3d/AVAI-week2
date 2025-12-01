@@ -66,7 +66,7 @@ class Div2kInr(Dataset):
             ])
 
             self.coords: Tensor = get_mgrid(self.image.width, self.image.height)
-            self.pixels: Tensor = transform(self.image).permute(1, 2, 0).view(-1, 1)
+            self.pixels: Tensor = transform(self.image).permute(1, 2, 0).contiguous().view(self.image.width * self.image.height, 3)
 
     def __len__(self) -> int:
       return 1
