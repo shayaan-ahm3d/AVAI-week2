@@ -3,20 +3,22 @@ from enum import Enum
 from pathlib import Path
 
 from PIL import Image
+from PIL.ImageFile import ImageFile
 import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision.transforms import Compose, ToTensor, Normalize
 
 class ImagePair(NamedTuple):
-    low: Image.Image
-    high: Image.Image
+    low: Tensor
+    high: Tensor
 
 
 class Mode(Enum):
     TRAIN = 0
     VALIDATE = 1
     TEST = 2
+
 
 NUM_CHANNELS = 3
 class Div2kDataset(Dataset):
@@ -25,6 +27,9 @@ class Div2kDataset(Dataset):
         self.high_root = Path(high_root)
         self.transform = transform
         self.mode = mode
+
+        if self.transform is None:
+            self.transform = ToTensor()
 
         self.low_paths = self._collect_files(self.low_root)
         self.high_paths = self._collect_files(self.high_root)
@@ -37,18 +42,17 @@ class Div2kDataset(Dataset):
 
     def __getitem__(self, idx: int) -> ImagePair:
         """Loads image upon access instead of loading entire dataset into memory"""
-        low_img = Image.open(self.low_paths[idx])
-        high_img = Image.open(self.high_paths[idx])
+        low_image = Image.open(self.low_paths[idx])
+        high_image = Image.open(self.high_paths[idx])
 
-        if self.transform:
-            low_img = self.transform(low_img)
-            high_img = self.transform(high_img)
+        low_image_tensor: Tensor = self.transform(low_image)
+        high_image_tensor: Tensor = self.transform(high_image)
 
-        pair = ImagePair(low_img, high_img)
+        pair = ImagePair(low_image_tensor, high_image_tensor)
         return pair
 
     @staticmethod
-    def get_coordinate_to_pixel_value_mapping(image: Image.Image) -> tuple[Tensor, Tensor]:
+    def get_coordinate_to_pixel_value_mapping(image) -> tuple[Tensor, Tensor]:
         """Used for implicit neural representations (INR) only"""    
         coords: Tensor = get_mgrid(image.height, image.width)
         pixels: Tensor = image.permute(1, 2, 0).contiguous().view(image.height * image.width, NUM_CHANNELS)

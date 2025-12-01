@@ -16,7 +16,7 @@ from PIL.Image import Image
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def train_model(model: Module, low_res_image: Image, steps: int) -> None:
+def train_model(model: Module, low_res_image, steps: int) -> None:
     input_coords, ground_truth_pixel_values = Div2kDataset.get_coordinate_to_pixel_value_mapping(low_res_image)
     input_coords = input_coords.to(DEVICE)
     ground_truth_pixel_values = ground_truth_pixel_values.to(DEVICE)
@@ -36,7 +36,7 @@ def train_model(model: Module, low_res_image: Image, steps: int) -> None:
         loss.backward()
         optimiser.step()
 
-def evaluate_model(model: Module, high_res_image: Image, index: int):
+def evaluate_model(model: Module, high_res_image, index: int):
     input_coords, ground_truth_pixel_values = Div2kDataset.get_coordinate_to_pixel_value_mapping(high_res_image)
     input_coords.to(DEVICE)
     ground_truth_pixel_values.to(DEVICE)
@@ -66,8 +66,8 @@ lpips_model = LPIPS().to(DEVICE).eval()
 total_steps = 10_000
 steps_til_summary = total_steps // 10
 
-low_res_path = Path("dataset/DIV2K_valid_LR_x8")
-high_res_path = Path("dataset/DIV2K_valid_HR")
+low_res_path = Path("dataset/DIV2K_train_LR_x8")
+high_res_path = Path("dataset/DIV2K_train_HR")
 transform = Compose([
     ToTensor(),
     Normalize(mean=torch.Tensor([0.5, 0.5, 0.5]), std=torch.Tensor([0.5, 0.5, 0.5]))
