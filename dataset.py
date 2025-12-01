@@ -2,7 +2,10 @@ from enum import Enum
 from pathlib import Path
 
 from PIL import Image
+import torch
+from torch import Tensor
 from torch.utils.data import Dataset
+from torchvision.transforms import Compose, Resize, ToTensor, Normalize
 
 
 class Mode(Enum):
@@ -50,3 +53,65 @@ class Div2kDataset(Dataset):
             p for p in Path(root).rglob("*")
             if p.is_file()
         ])
+    
+
+class ImagePreparation_color(Dataset):
+  '''a class which takes as input a RGB image and preprocess it into a list of coords and pixels of the same image cropped and resized into sidelenght*sidelength
+  folder: string
+  sidelength: int'''
+  def __init__(self, name, sidelength):
+      super().__init__()
+      img = Image.open(name)
+      if img.mode=='L':
+        img= img.convert('RGB')
+        
+      red, green, blue = img.split()
+      transform = Compose([
+      Resize(sidelength),
+      ToTensor(),
+      Normalize(torch.Tensor([0.5]), torch.Tensor([0.5]))
+      ])
+      red = transform(red)
+      green = transform(green)
+      blue = transform(blue)
+      self.redpixels = red.permute(1, 2, 0).view(-1, 1)
+      self.greenpixels = green.permute(1, 2, 0).view(-1, 1)
+      self.bluepixels = blue.permute(1, 2, 0).view(-1, 1)
+      self.coords = get_mgrid(sidelength, 2)
+
+      self.pixels= torch.cat((self.redpixels,self.greenpixels,self.bluepixels),1)
+        
+  def __len__(self):
+      return 1
+
+  def __getitem__(self, idx):    
+      if idx > 0: raise IndexError
+      return self.coords, self.pixels
+  
+# ### Step 2 Data Preparation
+
+# Let's generate a grid of coordinates over a 2D space and reshape the output into a flattened format.
+def get_mgrid(side_len1, side_len2, dim=2) -> Tensor:
+    '''Generates a flattened grid of (x,y,...) coordinates in a range of -1 to 1.
+    sidelen: int
+    dim: int'''
+
+    if side_len1 >= side_len2:
+      # use sidelen1 steps to generate the grid
+      tensors = tuple(dim * [torch.linspace(-1, 1, steps = side_len1)])
+      mgrid = torch.stack(torch.meshgrid(*tensors), dim = -1)
+      # crop it along one axis to fit sidelen2
+      minor = int((side_len1 - side_len2)/2)
+      mgrid = mgrid[:,minor:side_len2 + minor]
+
+    if side_len1 < side_len2:
+      tensors = tuple(dim * [torch.linspace(-1, 1, steps = side_len2)])
+      mgrid = torch.stack(torch.meshgrid(*tensors), dim = -1)
+
+      minor = int((side_len2 - side_len1)/2)
+      mgrid = mgrid[minor:side_len1 + minor,:]
+
+    # flatten the gird
+    mgrid = mgrid.reshape(-1, dim)
+
+    return mgrid
