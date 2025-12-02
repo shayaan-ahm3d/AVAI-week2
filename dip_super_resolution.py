@@ -135,7 +135,7 @@ def run_dip_on_patch(high_patch_np, patch_idx, log_progress=False):
     return torch_to_np(final_patch)
 
 
-def _ssim(chw_a, chw_b):
+def ssim(chw_a, chw_b):
     a = np.clip(chw_a, 0, 1).transpose(1, 2, 0)
     b = np.clip(chw_b, 0, 1).transpose(1, 2, 0)
     return structural_similarity(a, b, data_range=1.0, channel_axis=2)
@@ -184,8 +184,8 @@ def super_resolve_image(low_img, high_img, log_progress=False):
 
     baseline_psnr = peak_signal_noise_ratio(high_np, lr_bicubic_np)
     final_psnr = peak_signal_noise_ratio(high_np, final_output)
-    baseline_ssim = _ssim(high_np, lr_bicubic_np)
-    final_ssim = _ssim(high_np, final_output)
+    baseline_ssim = ssim(high_np, lr_bicubic_np)
+    final_ssim = ssim(high_np, final_output)
     baseline_lpips = _lpips(high_np, lr_bicubic_np)
     final_lpips = _lpips(high_np, final_output)
 
