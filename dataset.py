@@ -8,8 +8,6 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision.transforms import Compose, ToTensor, Normalize
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 class ImagePair(NamedTuple):
     low: Tensor
     high: Tensor
@@ -46,8 +44,8 @@ class Div2kDataset(Dataset):
         low_image = Image.open(self.low_paths[idx])
         high_image = Image.open(self.high_paths[idx])
 
-        low_image_tensor: Tensor = self.transform(low_image).to(DEVICE)
-        high_image_tensor: Tensor = self.transform(high_image).to(DEVICE)
+        low_image_tensor: Tensor = self.transform(low_image)
+        high_image_tensor: Tensor = self.transform(high_image)
 
         pair = ImagePair(low_image_tensor, high_image_tensor)
         return pair
@@ -55,8 +53,8 @@ class Div2kDataset(Dataset):
     @staticmethod
     def get_coordinate_to_pixel_value_mapping(image: Tensor) -> tuple[Tensor, Tensor]:
         """Used for implicit neural representations (INR) only"""
-        coords: Tensor = get_mgrid(image.shape[1], image.shape[2]).to(DEVICE)
-        pixels: Tensor = image.permute(1, 2, 0).contiguous().view(image.shape[1] * image.shape[2], NUM_CHANNELS).to(DEVICE)
+        coords: Tensor = get_mgrid(image.shape[1], image.shape[2])
+        pixels: Tensor = image.permute(1, 2, 0).contiguous().view(image.shape[1] * image.shape[2], NUM_CHANNELS)
 
         return coords, pixels
 
