@@ -20,8 +20,8 @@ lpips_model = LPIPS().eval()
 total_steps = 1_000
 steps_til_summary = total_steps // 10
 
-low_res_path = Path("dataset/DIV2K_train_LR_x8")
-high_res_path = Path("dataset/DIV2K_train_HR")
+low_res_path = Path("dataset/DIV2K_valid_LR_x8")
+high_res_path = Path("dataset/DIV2K_valid_HR")
 transform = Compose([
     ToTensor(),
     Normalize(mean=torch.Tensor([0.5, 0.5, 0.5]), std=torch.Tensor([0.5, 0.5, 0.5]))
