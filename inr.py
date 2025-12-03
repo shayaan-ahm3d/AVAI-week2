@@ -1,5 +1,5 @@
 from dataset import Div2kDataset, Mode
-from inr_utils import convert_pixel_value_range, laplace, divergence, gradient, ssim
+from inr_utils import convert_pixel_value_range, ssim
 from siren import Siren
 
 from pathlib import Path
