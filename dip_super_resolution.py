@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
+from PIL import Image as PILImage
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 import lpips
 
@@ -24,7 +25,7 @@ low_res_path = Path("dataset/DIV2K_valid_LR_x8")
 high_res_path = Path("dataset/DIV2K_valid_HR")
 dataset = Div2kDataset(low_res_path, high_res_path, transform=lambda x: x, mode=Mode.TRAIN)
 
-# Optimization and network hyperparameters
+# Optimisation and network hyperparameters
 pad = 'reflection'
 OPT_OVER = 'net'
 INPUT = 'noise'
@@ -37,6 +38,7 @@ num_iter = 500
 input_depth = 3
 ENABLE_NOISE = True
 NOISE_STD = 0.01
+EXTRA_DOWNSCALE_2X = False
 
 # Patch-specific settings
 PATCH_SIZE = 256
@@ -76,7 +78,6 @@ def _sliding_window_indices(length, window, stride):
 
 
 def generate_patch_coords(height, width, patch_size, overlap):
-    """Yield top/left/bottom/right tuples that tile the HR image."""
     if isinstance(patch_size, int):
         patch_size = (patch_size, patch_size)
 
@@ -104,7 +105,6 @@ def run_dip_on_patch(hr_shape, low_patch_np, patch_idx, log_progress=False):
     out_avg = None
     iteration = 0
     
-    # Create low-res target for unsupervised loss
     low_patch_torch = np_to_torch(low_patch_np).to(device=device, dtype=dtype)
 
     def closure():
@@ -120,7 +120,6 @@ def run_dip_on_patch(hr_shape, low_patch_np, patch_idx, log_progress=False):
         else:
             out_avg = out_avg * exp_weight + out.detach() * (1.0 - exp_weight)
 
-        # Downsample the network output to match the low-res target
         out_downsampled = torch.nn.functional.interpolate(out, size=low_patch_torch.shape[-2:], mode='bicubic', align_corners=False)
         
         loss = mse(out_downsampled, low_patch_torch)
@@ -179,6 +178,12 @@ def crop_lr_hr_pair(low_img_raw, high_img_raw, factor=8, divisible_by=32):
 
 
 def super_resolve_image(low_img, high_img, log_progress=False):
+    if EXTRA_DOWNSCALE_2X:
+        low_img = low_img.resize((low_img.width // 2, low_img.height // 2), PILImage.Resampling.BICUBIC)
+        factor = 16
+    else:
+        factor = 8
+
     low_np = pil_to_np(low_img)
     if ENABLE_NOISE:
         low_np = add_noise(low_np, std=NOISE_STD)
@@ -195,10 +200,8 @@ def super_resolve_image(low_img, high_img, log_progress=False):
     weight_map = np.zeros((1, height, width), dtype=np.float32)
 
     for idx, (top, left, bottom, right) in enumerate(patch_coords):
-        # high_patch_np = high_np[:, top:bottom, left:right]
-        
-        top_lr, left_lr = top // 8, left // 8
-        bottom_lr, right_lr = bottom // 8, right // 8
+        top_lr, left_lr = top // factor, left // factor
+        bottom_lr, right_lr = bottom // factor, right // factor
         low_patch_np = low_np[:, top_lr:bottom_lr, left_lr:right_lr]
         
         hr_shape = (bottom - top, right - left)
@@ -243,6 +246,8 @@ all_psnr = []
 all_ssim = []
 all_lpips = []
 metric_filename = f"dip_noisy_std={NOISE_STD}.csv" if ENABLE_NOISE else "dip.csv"
+if EXTRA_DOWNSCALE_2X:
+    metric_filename = "x16_" + metric_filename
 metrics_log_path = OUTPUT_DIR / metric_filename
 metrics_log_path.write_text(
     "sample,baseline_psnr,dip_psnr,baseline_ssim,dip_ssim,baseline_lpips,dip_lpips,num_patches\n"

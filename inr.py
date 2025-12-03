@@ -15,6 +15,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ADD_NOISE = True
 NOISE_STD = 0.1
 SAVE_EVERY = 10
+EXTRA_DOWNSCALE_2X = True
 
 mse = MSELoss()
 # LPIPS model to calculate metrics
@@ -117,6 +118,8 @@ def evaluate_model(model: Module, high_res_image: torch.Tensor, low_res_image: t
 if __name__ == "__main__":
     log_dir = Path("outputs/INR")
     log_filename: str = "inr.csv" if not ADD_NOISE else f"inr_noise_std={NOISE_STD}.csv"
+    if EXTRA_DOWNSCALE_2X:
+        log_filename = "x16_" + log_filename
     log_path = log_dir / log_filename
     log_path.write_text("image,loss,psnr,ssim,lpips,baseline_psnr,baseline_ssim,baseline_lpips\n")
 
@@ -131,6 +134,9 @@ if __name__ == "__main__":
             optimiser = torch.optim.Adam(super_resolve.parameters() , lr=1e-4)
 
             low = low.to(DEVICE)
+            if EXTRA_DOWNSCALE_2X:
+                low = torch.nn.functional.interpolate(low.unsqueeze(0), scale_factor=0.5, mode='bicubic', align_corners=False).squeeze(0)
+
             if ADD_NOISE:
                 low += torch.normal(0.0, NOISE_STD, low.shape).to(DEVICE) # AWGN
             train_model(super_resolve, low, total_steps)
