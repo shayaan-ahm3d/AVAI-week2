@@ -1,0 +1,3 @@
+[submodule "EDSR-PyTorch"]
+	path = EDSR-PyTorch
+	url = https://github.com/sanghyun-son/EDSR-PyTorch.git
