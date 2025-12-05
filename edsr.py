@@ -10,12 +10,16 @@ import numpy as np
 import torch
 from torch import Tensor
 import torch.nn as nn
-from torch.nn import Module
+from torch.nn import Module, functional as F
 from torch.utils.data import DataLoader, Dataset
 from torch.optim import Optimizer, Adam
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.transforms import ToTensor, Compose
 from torchvision.utils import save_image
+from torchvision.transforms import functional as TF
+from PIL import ImageDraw
+import argparse
+
 from skimage.metrics import peak_signal_noise_ratio
 from lpips import LPIPS
 
@@ -100,23 +104,46 @@ def test(model: Module, dataloader: DataLoader) -> tuple[float, float, float]:
         
         output: Tensor = model(low_tensor)
         
+        # Bicubic Upsampling for comparison
+        bicubic = F.interpolate(low_tensor, size=high_tensor.shape[2:], mode='bicubic', align_corners=False).clamp(0, 1)
+        
         # LPIPS needs a tensor in (B, C, H, W) format within range [-1, 1]
         output_scaled = output.clamp(0, 1) * 2.0 - 1.0
         high_scaled = high_tensor * 2.0 - 1.0
         
         # lpips_model returns (B, 1, 1, 1)
-        acc_lpips += lpips_model(high_scaled, output_scaled).sum().item()
+        # We calculate batch LPIPS for the mean, but we also need individual for annotation
+        batch_lpips = lpips_model(high_scaled, output_scaled)
+        acc_lpips += batch_lpips.sum().item()
 
         # Metrics need NumpPy array, (B, C, H, W) -> (H, W, C)
         for j in range(low_tensor.size(0)):
             output_np: np.ndarray = output[j].cpu().numpy().transpose(1, 2, 0).clip(0, 1)
             high_np: np.ndarray = high[j].numpy().transpose(1, 2, 0)
+            bicubic_np: np.ndarray = bicubic[j].cpu().numpy().transpose(1, 2, 0).clip(0, 1)
             
-            acc_psnr += peak_signal_noise_ratio(high_np, output_np, data_range=1.0)
-            acc_ssim += ssim(high_np, output_np, data_range=1.0)
+            # Model Metrics
+            p_val = peak_signal_noise_ratio(high_np, output_np, data_range=1.0)
+            s_val = ssim(high_np, output_np, data_range=1.0)
+            l_val = batch_lpips[j].item()
             
-            # Create single image of output and ground truth
-            combined = torch.cat((output[j].cpu().clamp(0, 1), high[j]), dim=2)
+            acc_psnr += p_val
+            acc_ssim += s_val
+            
+            # Bicubic Metrics (for annotation)
+            b_p_val = peak_signal_noise_ratio(high_np, bicubic_np, data_range=1.0)
+            b_s_val = ssim(high_np, bicubic_np, data_range=1.0)
+            # Calculate LPIPS for bicubic individually
+            b_l_val = lpips_model(high_tensor[j:j+1] * 2 - 1, bicubic[j:j+1] * 2 - 1).item()
+            
+            # Create annotated images
+            bicubic_labeled = add_labels(bicubic[j], b_p_val, b_s_val, b_l_val, "Bicubic")
+            pred_labeled = add_labels(output[j], p_val, s_val, l_val, "EDSR")
+            # For GT, we don't really have metrics (perfect), so just label
+            gt_labeled = add_labels(high[j], float('inf'), 1.0, 0.0, "Ground Truth")
+            
+            # Concatenate images side-by-side (dim=2 is width)
+            combined = torch.cat((bicubic_labeled, pred_labeled, gt_labeled), dim=2)
             save_image(combined, OUTPUT_DIR / f"EDSR_test_{num_images + 1}.png")
             num_images += 1
 
@@ -179,39 +206,61 @@ def train(model: Module,
                 }, LOG_DIR / f"edsr_x{SCALE}_psnr={val_psnr}.pth")
                 print(f"Saved best model (PSNR: {val_psnr:.2f})")
 
-log_dir: str = get_unique_log_dir(log_dir=Path("logs"), scale=SCALE, learning_rate=LEARNING_RATE, log_name="edsr")
-logger = SummaryWriter(log_dir=log_dir, flush_secs=5)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint")
+    parser.add_argument("--train", action="store_true", help="Train the model")
+    args = parser.parse_args()
 
-model = Edsr(scale=SCALE, n_resblocks=N_RESBLOCKS, n_feats=N_FEATS).to(DEVICE)
+    log_dir: str = get_unique_log_dir(log_dir=Path("logs"), scale=SCALE, learning_rate=LEARNING_RATE, log_name="edsr")
+    logger = SummaryWriter(log_dir=log_dir, flush_secs=5)
 
-criterion = nn.L1Loss() # paper uses L1
-optimiser = Adam(model.parameters(), lr=LEARNING_RATE)
+    model = Edsr(scale=SCALE, n_resblocks=N_RESBLOCKS, n_feats=N_FEATS).to(DEVICE)
 
-transform = Compose([
-    ToTensor(),
-])
+    criterion = nn.L1Loss() # paper uses L1
+    optimiser = Adam(model.parameters(), lr=LEARNING_RATE)
+    
+    if args.checkpoint:
+        if Path(args.checkpoint).exists():
+            checkpoint = torch.load(args.checkpoint, map_location=DEVICE)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            print(f"Loaded checkpoint from {args.checkpoint}")
+        else:
+            print(f"Checkpoint {args.checkpoint} not found!")
 
-train_val_dataset = Div2kDataset(low_path, high_path, transform, mode=Mode.TRAIN)
-test_dataset = Div2kDataset(test_low_path, test_high_path, transform, mode=Mode.TEST)
+    transform = Compose([
+        ToTensor(),
+    ])
 
-train_dataset, val_dataset = torch.utils.data.random_split(train_val_dataset, [0.8, 0.2])
+    train_val_dataset = Div2kDataset(low_path, high_path, transform, mode=Mode.TRAIN)
+    test_dataset = Div2kDataset(test_low_path, test_high_path, transform, mode=Mode.TEST)
 
-train_dataset_patched = PatchedDataset(train_dataset, PATCH_SIZE, SCALE)
-val_dataset_patched = PatchedDataset(val_dataset, PATCH_SIZE, SCALE)
-test_dataset_patched = PatchedDataset(test_dataset, PATCH_SIZE, SCALE)
+    train_dataset, val_dataset = torch.utils.data.random_split(train_val_dataset, [0.8, 0.2])
 
-train_dataloader = DataLoader(train_dataset_patched, batch_size=BATCH_SIZE, shuffle=True, pin_memory=True, num_workers=cpu_count())
-val_dataloader = DataLoader(val_dataset_patched, batch_size=BATCH_SIZE, shuffle=False, pin_memory=True, num_workers=cpu_count())
-test_dataloader = DataLoader(test_dataset_patched, batch_size=BATCH_SIZE, shuffle=False, pin_memory=True, num_workers=cpu_count())
+    train_dataset_patched = PatchedDataset(train_dataset, PATCH_SIZE, SCALE)
+    val_dataset_patched = PatchedDataset(val_dataset, PATCH_SIZE, SCALE)
+    test_dataset_patched = PatchedDataset(test_dataset, PATCH_SIZE, SCALE)
 
-print(f"Loaded {len(train_dataset)} training images")
-print(f"Loaded {len(val_dataset)} validation images")
-print(f"Loaded {len(test_dataset)} test images")
+    train_dataloader = DataLoader(train_dataset_patched, batch_size=BATCH_SIZE, shuffle=True, pin_memory=True, num_workers=cpu_count())
+    val_dataloader = DataLoader(val_dataset_patched, batch_size=BATCH_SIZE, shuffle=False, pin_memory=True, num_workers=cpu_count())
+    test_dataloader = DataLoader(test_dataset_patched, batch_size=BATCH_SIZE, shuffle=False, pin_memory=True, num_workers=cpu_count())
 
-train(model, train_dataloader, val_dataloader, criterion, optimiser, logger)
+    print(f"Loaded {len(train_dataset)} training images")
+    print(f"Loaded {len(val_dataset)} validation images")
+    print(f"Loaded {len(test_dataset)} test images")
 
-print("TESTING")
-test_psnr, test_ssim, test_lpips = test(model, test_dataloader)
-print(f"Test - PSNR: {test_psnr:.2f} dB | SSIM: {test_ssim:.4f} | LPIPS: {test_lpips:.4f}")
+    if args.train:
+        train(model, train_dataloader, val_dataloader, criterion, optimiser, logger)
 
-logger.close()
+    print("Running inference...")
+    test_psnr, test_ssim, test_lpips = test(model, test_dataloader)
+    print(f"Test - PSNR: {test_psnr:.2f} dB | SSIM: {test_ssim:.4f} | LPIPS: {test_lpips:.4f}")
+
+    logger.close()
+
+def add_labels(img_tensor: Tensor, psnr: float, ssim: float, lpips: float, name: str) -> Tensor:
+    img_pil = TF.to_pil_image(img_tensor.cpu().clamp(0, 1))
+    draw = ImageDraw.Draw(img_pil)
+    text = f"{name}\nPSNR: {psnr:.2f}\nSSIM: {ssim:.3f}\nLPIPS: {lpips:.3f}"
+    draw.text((5, 5), text, fill=(255, 255, 255))
+    return TF.to_tensor(img_pil).to(DEVICE)
