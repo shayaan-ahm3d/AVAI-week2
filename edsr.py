@@ -11,7 +11,7 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 from torch.nn import Module
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from torch import optim
 from torch.optim import Optimizer, Adam
 from torch.utils.tensorboard import SummaryWriter
@@ -37,24 +37,20 @@ high_path = Path("dataset/DIV2K_train_HR")
 test_low_path = Path("dataset/DIV2K_valid_LR_x8")
 test_high_path = Path("dataset/DIV2K_valid_HR")
 
-def collate_fn(batch):
-    """
-    To be able to use DataLoader with random patches
-    """
-    low_tensors = []
-    high_tensors = []
-    for low, high in batch:
-        if low.shape[1] < PATCH_SIZE or low.shape[2] < PATCH_SIZE:
-            continue
-        
-        low_patch, high_patch = get_random_patch(low, high, PATCH_SIZE, SCALE)
-        low_tensors.append(low_patch)
-        high_tensors.append(high_patch)
-    
-    if not low_tensors:
-        return None
-        
-    return torch.stack(low_tensors), torch.stack(high_tensors)
+class PatchedDataset(Dataset):
+    def __init__(self, dataset, patch_size, scale):
+        self.dataset = dataset
+        self.patch_size = patch_size
+        self.scale = scale
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        low, high = self.dataset[idx]
+        # Perform crop HERE, inside the worker process
+        low_patch, high_patch = get_random_patch(low, high, self.patch_size, self.scale)
+        return low_patch, high_patch
 
 @torch.no_grad()
 def validate(model: Module, dataloader: DataLoader) -> tuple[float, float]:
@@ -186,7 +182,9 @@ test_dataset = Div2kDataset(test_low_path, test_high_path, transform, mode=Mode.
 
 train_dataset, val_dataset = torch.utils.data.random_split(train_val_dataset, [0.8, 0.2])
 
-train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, pin_memory=True, num_workers=cpu_count(), collate_fn=collate_fn)
+train_dataset_patched = PatchedDataset(train_dataset, PATCH_SIZE, SCALE)
+
+train_dataloader = DataLoader(train_dataset_patched, batch_size=BATCH_SIZE, shuffle=True, pin_memory=True, num_workers=cpu_count())
 val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False, pin_memory=True, num_workers=cpu_count())
 test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False, pin_memory=True, num_workers=cpu_count())
 
