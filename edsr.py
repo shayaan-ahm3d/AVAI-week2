@@ -1,6 +1,6 @@
-from dataset import Div2kDataset, Mode
+from dataset import Div2kDataset, Mode, PatchedDataset, get_random_patch
 from edsr_model import Edsr
-from edsr_utils import get_random_patch, log_metrics, get_unique_log_dir
+from edsr_utils import log_metrics, get_unique_log_dir
 from inr_utils import ssim
 
 from pathlib import Path
@@ -42,20 +42,12 @@ high_path = Path("dataset/DIV2K_train_HR")
 test_low_path = Path("dataset/DIV2K_valid_LR_x8")
 test_high_path = Path("dataset/DIV2K_valid_HR")
 
-class PatchedDataset(Dataset):
-    def __init__(self, dataset, patch_size, scale):
-        self.dataset = dataset
-        self.patch_size = patch_size
-        self.scale = scale
-
-    def __len__(self):
-        return len(self.dataset)
-
-    def __getitem__(self, idx):
-        low, high = self.dataset[idx]
-        # crop here to minimise memory usage
-        low_patch, high_patch = get_random_patch(low, high, self.patch_size, self.scale)
-        return low_patch, high_patch
+def add_labels(img_tensor: Tensor, psnr: float, ssim: float, lpips: float, name: str) -> Tensor:
+    img_pil = TF.to_pil_image(img_tensor.cpu().clamp(0, 1))
+    draw = ImageDraw.Draw(img_pil)
+    text = f"{name}\nPSNR: {psnr:.2f}\nSSIM: {ssim:.3f}\nLPIPS: {lpips:.3f}"
+    draw.text((5, 5), text, fill=(255, 255, 255))
+    return TF.to_tensor(img_pil).to(DEVICE)
 
 @torch.no_grad()
 def validate(model: Module, dataloader: DataLoader) -> tuple[float, float]:
@@ -256,10 +248,3 @@ if __name__ == "__main__":
     print(f"Test - PSNR: {test_psnr:.2f} dB | SSIM: {test_ssim:.4f} | LPIPS: {test_lpips:.4f}")
 
     logger.close()
-
-def add_labels(img_tensor: Tensor, psnr: float, ssim: float, lpips: float, name: str) -> Tensor:
-    img_pil = TF.to_pil_image(img_tensor.cpu().clamp(0, 1))
-    draw = ImageDraw.Draw(img_pil)
-    text = f"{name}\nPSNR: {psnr:.2f}\nSSIM: {ssim:.3f}\nLPIPS: {lpips:.3f}"
-    draw.text((5, 5), text, fill=(255, 255, 255))
-    return TF.to_tensor(img_pil).to(DEVICE)

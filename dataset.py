@@ -1,12 +1,14 @@
 from typing import NamedTuple
 from enum import Enum
 from pathlib import Path
+import random
 
 from PIL import Image
 import torch
 from torch import Tensor
+from torchvision.transforms.functional import crop
 from torch.utils.data import Dataset
-from torchvision.transforms import Compose, ToTensor, Normalize
+from torchvision.transforms import ToTensor
 
 class ImagePair(NamedTuple):
     low: Tensor
@@ -89,3 +91,35 @@ def get_mgrid(side_len1: int, side_len2: int, dim: int = 2) -> Tensor:
     mgrid = mgrid.reshape(-1, dim)
 
     return mgrid
+
+class PatchedDataset(Dataset):
+    def __init__(self, dataset, patch_size, scale):
+        self.dataset = dataset
+        self.patch_size = patch_size
+        self.scale = scale
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        low, high = self.dataset[idx]
+        # crop here to minimise memory usage
+        low_patch, high_patch = get_random_patch(low, high, self.patch_size, self.scale)
+        return low_patch, high_patch
+    
+
+def get_random_patch(low_res: Tensor, high_res: Tensor, patch_size: int, scale: int = 8) -> tuple[Tensor, Tensor]:
+    _, low_res_height, low_res_width = low_res.shape
+    
+    # Calculate random crop position
+    tx: int = random.randrange(0, low_res_width - patch_size + 1)
+    ty: int = random.randrange(0, low_res_height - patch_size + 1)
+    
+    low_patch: Tensor = crop(low_res, ty, tx, patch_size, patch_size)
+    
+    # Crop HR (coordinates scaled)
+    tx_hr, ty_hr = tx * scale, ty * scale
+    high_patch_size: int = patch_size * scale
+    high_patch: Tensor = crop(high_res, ty_hr, tx_hr, high_patch_size, high_patch_size)
+    
+    return low_patch, high_patch
