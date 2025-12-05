@@ -4,16 +4,15 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import ToTensor
 from pathlib import Path
 import csv
-import numpy as np
 from skimage.metrics import peak_signal_noise_ratio
 from lpips import LPIPS
 
 from dataset import Div2kDataset, Mode
 from inr_utils import ssim
 
-SCALE = 8
+SCALE = 16
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-OUTPUT_CSV = Path("bicubic.csv")
+OUTPUT_CSV = Path("bicubic_x16.csv")
 
 low_path = Path("dataset/DIV2K_valid_LR_x8")
 high_path = Path("dataset/DIV2K_valid_HR")
@@ -38,9 +37,12 @@ def main():
             low = low.to(DEVICE)
             high = high.to(DEVICE)
 
-            # Bicubic Upscaling
+            # Downscale x8 input by 2x to simulate x16 input
+            low_downscaled = F.interpolate(low, scale_factor=0.5, mode='bicubic', align_corners=False)
+
+            # Bicubic Upscaling from x16 to HR
             # Upscale to the size of the HR image
-            upscaled = F.interpolate(low, size=high.shape[2:], mode='bicubic', align_corners=False)
+            upscaled = F.interpolate(low_downscaled, size=high.shape[2:], mode='bicubic', align_corners=False)
             
             # Clamp to [0, 1]
             upscaled = upscaled.clamp(0, 1)
