@@ -19,7 +19,7 @@ from torchvision.utils import save_image
 from skimage.metrics import peak_signal_noise_ratio
 from lpips import LPIPS
 
-SCALE = 4 # Super-resolution factor
+SCALE = 8 # Super-resolution factor
 N_RESBLOCKS = 16 # Number of residual blocks
 N_FEATS = 64 # Number of filters
 PATCH_SIZE = 24 # Low patch size (High patch size will be PATCH_SIZE * SCALE)
