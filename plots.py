@@ -133,3 +133,48 @@ create_plot(noise_04, "AWGN σ=0.4: Bicubic vs DIP vs INR", "outputs/plots/compa
 create_plot(noise_05, "AWGN σ=0.5: Bicubic vs DIP vs INR", "outputs/plots/comparison_noise_05.png")
 create_plot(x16, "x16 Super-Resolution: Bicubic vs DIP vs INR", "outputs/plots/comparison_x16.png")
 create_plot(regular, "Super-Resolution: Bicubic vs DIP vs INR", "outputs/plots/comparison_regular.png")
+
+# Calculate and save summary statistics
+summary_file = Path("outputs/plots/summary_metrics.txt")
+
+def get_means(df, label):
+    means = df.mean(numeric_only=True)
+    return {
+        "Experiment": label,
+        "Bicubic PSNR": means.get("bicubic_psnr", 0),
+        "Bicubic SSIM": means.get("bicubic_ssim", 0),
+        "Bicubic LPIPS": means.get("bicubic_lpips", 0),
+        "DIP PSNR": means.get("dip_psnr", 0),
+        "DIP SSIM": means.get("dip_ssim", 0),
+        "DIP LPIPS": means.get("dip_lpips", 0),
+        "INR PSNR": means.get("inr_psnr", 0),
+        "INR SSIM": means.get("inr_ssim", 0),
+        "INR LPIPS": means.get("inr_lpips", 0),
+    }
+
+experiments = [
+    (regular, "Regular (x8)"),
+    (noise_01, "Noise std=0.1"),
+    (noise_02, "Noise std=0.2"),
+    (noise_03, "Noise std=0.3"),
+    (noise_04, "Noise std=0.4"),
+    (noise_05, "Noise std=0.5"),
+    (x16, "Super-Resolution (x16)"),
+]
+
+with open(summary_file, "w") as f:
+    f.write(f"{'Experiment':<25} | {'Model':<10} | {'PSNR':<10} | {'SSIM':<10} | {'LPIPS':<10}\n")
+    f.write("-" * 80 + "\n")
+    
+    for df, label in experiments:
+        stats = get_means(df, label)
+        
+        # Bicubic Row
+        f.write(f"{label:<25} | {'Bicubic':<10} | {stats['Bicubic PSNR']:<10.4f} | {stats['Bicubic SSIM']:<10.4f} | {stats['Bicubic LPIPS']:<10.4f}\n")
+        # DIP Row
+        f.write(f"{'':<25} | {'DIP':<10} | {stats['DIP PSNR']:<10.4f} | {stats['DIP SSIM']:<10.4f} | {stats['DIP LPIPS']:<10.4f}\n")
+        # INR Row
+        f.write(f"{'':<25} | {'INR':<10} | {stats['INR PSNR']:<10.4f} | {stats['INR SSIM']:<10.4f} | {stats['INR LPIPS']:<10.4f}\n")
+        f.write("-" * 80 + "\n")
+
+print(f"Summary metrics saved to {summary_file}")
