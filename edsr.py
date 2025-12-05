@@ -45,7 +45,7 @@ test_high_path = Path("dataset/DIV2K_valid_HR")
 def add_labels(img_tensor: Tensor, psnr: float, ssim: float, lpips: float, name: str) -> Tensor:
     img_pil = TF.to_pil_image(img_tensor.cpu().clamp(0, 1))
     draw = ImageDraw.Draw(img_pil)
-    text = f"{name}\nPSNR: {psnr:.2f}\nSSIM: {ssim:.3f}\nLPIPS: {lpips:.3f}"
+    text = f"{name}\nPSNR: {psnr:.4f}\nSSIM: {ssim:.4f}\nLPIPS: {lpips:.4f}"
     draw.text((5, 5), text, fill=(255, 255, 255))
     return TF.to_tensor(img_pil).to(DEVICE)
 
