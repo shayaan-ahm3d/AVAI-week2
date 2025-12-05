@@ -1,4 +1,4 @@
-from dataset import Div2kDataset, Mode, PatchedDataset, get_random_patch
+from dataset import Div2kDataset, PatchedDataset, get_random_patch
 from edsr_model import Edsr
 from edsr_utils import log_metrics, get_unique_log_dir
 from inr_utils import ssim
@@ -78,7 +78,7 @@ def validate(model: Module, dataloader: DataLoader) -> tuple[float, float]:
     return mean_psnr, mean_ssim
 
 @torch.no_grad()
-def test(model: Module, dataloader: DataLoader) -> tuple[float, float, float]:
+def test(model: Module, dataloader: DataLoader, noise_std: float = 0.0) -> tuple[float, float, float]:
     """Testing loop, returns mean PSNR, SSIM & LPIPS"""
     model.eval()
     lpips_model: LPIPS = LPIPS().to(DEVICE).eval()
@@ -90,8 +90,18 @@ def test(model: Module, dataloader: DataLoader) -> tuple[float, float, float]:
 
     print(f"Saving test images to {OUTPUT_DIR}")
 
+    csv_filename = "edsr.csv" if noise_std == 0.0 else f"edsr_noise_std={noise_std}.csv"
+    csv_path = OUTPUT_DIR / csv_filename
+    with open(csv_path, "w") as f:
+        f.write("image_idx,edsr_psnr,edsr_ssim,edsr_lpips\n")
+
     for i, (low, high) in enumerate(dataloader):
         low_tensor: Tensor = low.to(DEVICE)
+
+        if noise_std > 0.0:
+            low_tensor = low_tensor + torch.randn_like(low_tensor) * noise_std
+            low_tensor = low_tensor.clamp(0, 1)
+
         high_tensor: Tensor = high.to(DEVICE)
         
         output: Tensor = model(low_tensor)
@@ -128,6 +138,9 @@ def test(model: Module, dataloader: DataLoader) -> tuple[float, float, float]:
             
             b_l_val = lpips_model(high_tensor[j:j+1] * 2 - 1, bicubic[j:j+1] * 2 - 1).item()
             
+            with open(csv_path, "a") as f:
+                f.write(f"{num_images},{p_val:.4f},{s_val:.4f},{l_val:.4f}\n")
+
             # Create annotated images
             bicubic_labeled = add_labels(bicubic[j], b_p_val, b_s_val, b_l_val, "Bicubic")
             pred_labeled = add_labels(output[j], p_val, s_val, l_val, "EDSR")
@@ -201,6 +214,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint")
     parser.add_argument("--train", action="store_true", help="Train the model")
+    parser.add_argument("--noise_std", type=float, default=0.0, help="Standard deviation of AWGN noise")
     args = parser.parse_args()
 
     log_dir: str = get_unique_log_dir(log_dir=Path("logs"), scale=SCALE, learning_rate=LEARNING_RATE, log_name="edsr")
@@ -223,8 +237,8 @@ if __name__ == "__main__":
         ToTensor(),
     ])
 
-    train_val_dataset = Div2kDataset(low_path, high_path, transform, mode=Mode.TRAIN)
-    test_dataset = Div2kDataset(test_low_path, test_high_path, transform, mode=Mode.TEST)
+    train_val_dataset = Div2kDataset(low_path, high_path, transform)
+    test_dataset = Div2kDataset(test_low_path, test_high_path, transform)
 
     train_dataset, val_dataset = torch.utils.data.random_split(train_val_dataset, [0.8, 0.2])
 
@@ -243,8 +257,8 @@ if __name__ == "__main__":
     if args.train:
         train(model, train_dataloader, val_dataloader, criterion, optimiser, logger)
 
-    print("Running inference...")
-    test_psnr, test_ssim, test_lpips = test(model, test_dataloader)
+    print("Running inference")
+    test_psnr, test_ssim, test_lpips = test(model, test_dataloader, noise_std=args.noise_std)
     print(f"Test - PSNR: {test_psnr:.4f} dB | SSIM: {test_ssim:.4f} | LPIPS: {test_lpips:.4f}")
 
     logger.close()

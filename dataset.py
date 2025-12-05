@@ -14,20 +14,12 @@ class ImagePair(NamedTuple):
     low: Tensor
     high: Tensor
 
-
-class Mode(Enum):
-    TRAIN = 0
-    VALIDATE = 1
-    TEST = 2
-
-
 NUM_CHANNELS = 3
 class Div2kDataset(Dataset):
-    def __init__(self, low_root: Path, high_root: Path, transform=None, mode: Mode=Mode.TRAIN) -> None:
+    def __init__(self, low_root: Path, high_root: Path, transform=None) -> None:
         self.low_root = Path(low_root)
         self.high_root = Path(high_root)
         self.transform = transform
-        self.mode = mode
 
         if self.transform is None:
             self.transform = ToTensor()
